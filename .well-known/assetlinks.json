@@ -3,6 +3,8 @@
   "target": {
     "namespace": "android_app",
     "package_name": "com.wonseup.coinfortune",
-    "sha256_cert_fingerprints": ["PLACEHOLDER_REPLACE_AFTER_BUILD"]
+    "sha256_cert_fingerprints": [
+      "1D:65:58:E2:DE:EA:58:38:1D:4C:5E:45:5C:74:D1:9F:6C:1D:19:76:CA:4F:FD:BF:6C:5E:F8:74:DD:E2:E3:A1"
+    ]
   }
 }]
