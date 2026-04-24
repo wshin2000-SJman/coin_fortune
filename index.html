@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- PWA / TWA 필수 태그 -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#b8860b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="주역점">
+    <link rel="apple-touch-icon" href="img/icons/icon-192.png">
+    <title>동전 던지기로 보는 주역점</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="data.js"></script>
+    <script src="hyosa_data.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: 'Apple SD Gothic Neo', sans-serif;
+            background: #1a1a1a;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* 동전 표시 영역 스타일 */
+        #coin-display {
+            width: 180px;
+            height: 180px;
+            margin: 30px auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+            transition: transform 0.05s;
+            overflow: hidden;
+            cursor: pointer;
+            touch-action: manipulation;
+            /* 더블 탭 및 스크롤 방해 방지 */
+            -webkit-user-select: none;
+            /* 텍스트 선택 방지 */
+            user-select: none;
+        }
+
+        #coin-display:active {
+            transform: scale(0.95);
+        }
+
+        #log {
+            margin-top: 20px;
+            text-align: left;
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .yang {
+            color: #ff6b6b;
+        }
+
+        /* 양(빨강 계열) */
+        .um {
+            color: #4dabf7;
+        }
+
+        /* 음(파랑 계열) */
+        .notice-box {
+            background: #222;
+            border-left: 4px solid #ffd700;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 0.85rem;
+            color: #ccc;
+            text-align: left;
+            line-height: 1.5;
+        }
+
+        #reset-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fff;
+            background: #b8860b;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: background 0.2s, transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #reset-btn:active {
+            transform: scale(0.95);
+            background: #daa520;
+        }
+
+        /* 시작 화면 (로그인) 스타일 */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-image: url('img/background.png'); background-size: cover; background-position: center;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 2000; color: white;
+        }
+        /* 배경 어둡게 처리 (가독성 향상) */
+        #start-screen::before {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); z-index: -1;
+        }
+        #start-logo { width: 150px; margin-bottom: 20px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.5)); }
+        #start-title { font-size: 1.8rem; font-weight: bold; margin-bottom: 30px; text-shadow: 2px 2px 5px #000; text-align: center; line-height: 1.4; }
+        
+        .auth-box {
+            background: rgba(30, 30, 30, 0.85); padding: 30px; border-radius: 15px;
+            width: 85%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255, 215, 0, 0.3); backdrop-filter: blur(5px);
+        }
+        .auth-box input {
+            width: 100%; padding: 12px; margin: 10px 0; box-sizing: border-box; background: rgba(0,0,0,0.5); 
+            color: white; border: 1px solid #555; border-radius: 8px; font-size: 1rem; outline: none;
+        }
+        .auth-box input:focus { border-color: #b8860b; }
+        .auth-box button {
+            width: 100%; padding: 14px; background: linear-gradient(135deg, #b8860b, #daa520); color: white; 
+            border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: transform 0.1s;
+        }
+        .auth-box button:active { transform: scale(0.97); }
+
+        /* 메인 앱 스타일 */
+        #main-app { display: none; padding-bottom: 40px; }
+        
+        /* 인증 바 및 모달 스타일 */
+        #auth-bar { text-align: right; padding: 10px; font-size: 0.9rem; border-bottom: 1px solid #333; margin-bottom: 20px; }
+        #auth-bar button { background: #444; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; margin-left: 5px; font-weight: bold;}
+        #auth-bar span { margin-right: 15px; color: #ffd700; }
+        
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center; backdrop-filter: blur(3px);
+        }
+        .modal-content {
+            background-color: #1a1a1a; padding: 25px; border-radius: 15px; width: 90%; max-width: 450px;
+            text-align: left; box-shadow: 0 4px 25px rgba(0,0,0,0.8); border: 1px solid #444;
+            max-height: 80vh; overflow-y: auto;
+        }
+        .modal-content h3 { margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 15px; color: #ffd700; font-size: 1.4rem;}
+        .close-modal { color: #888; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
+        .close-modal:hover { color: white; }
+        
+        .history-item { background: #2a2a2a; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #b8860b; }
+        .history-date { font-size: 0.8rem; color: #999; margin-bottom: 8px; }
+    </style>
+</head>
+
+<body>
+    <!-- 시작(로그인) 화면 -->
+    <div id="start-screen">
+        <div style="position: relative; z-index: 1; display:flex; flex-direction:column; align-items:center;">
+            <img id="start-logo" src="img/logo.png" alt="로고">
+            <div id="start-title">주역으로 보는 동전점<br><span style="font-size:1.1rem; color:#ffd700; font-weight:normal;">by Wonseup Shin</span></div>
+            
+            <div class="auth-box">
+                <input type="email" id="auth-email" placeholder="이메일 주소">
+                <input type="password" id="auth-password" placeholder="비밀번호 (6자리 이상)">
+                <button id="login-submit-btn" onclick="handleAuth()">시작하기</button>
+                <div style="margin-top: 15px; text-align: center;">
+                    <a href="#" onclick="sendPasswordReset(event)" style="color: #4dabf7; font-size: 0.85rem; text-decoration: none;">비밀번호를 잊으셨나요? (재설정)</a>
+                </div>
+                <p style="font-size: 0.85rem; color: #bbb; margin-top: 10px; text-align: center;">계정이 없으면 자동으로 가입됩니다.</p>
+            </div>
+        </div>
+        <div style="position: absolute; bottom: 20px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); z-index: 1; text-align: center;">
+            © 2026. Wonseup_Shin. All rights reserved.
+        </div>
+    </div>
+
+    <!-- 메인 앱 컨테이너 -->
+    <div id="main-app">
+        <div id="auth-bar">
+            <span id="user-info"></span>
+            <button id="history-btn-top" onclick="showHistoryModal()">나의 기록</button>
+            <button id="logout-btn-top" onclick="handleLogout()">로그아웃</button>
+        </div>
+
+        <!-- History Modal -->
+        <div id="history-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-modal" onclick="closeHistoryModal()">&times;</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px;">
+                    <h3 style="margin: 0; border: none; padding: 0; color: #ffd700; font-size: 1.4rem;">나의 점괘 기록</h3>
+                    <button onclick="downloadCSV()" style="background: #27ae60; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 0.9rem; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">📥 CSV 다운로드</button>
+                </div>
+                <div id="history-list">
+                    <!-- Records will be injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Password Reset Modal -->
+        <div id="reset-pwd-modal" class="modal" style="z-index: 3000;">
+            <div class="modal-content" style="max-width: 350px; text-align: center;">
+                <h3 style="border-bottom:none; margin-bottom: 10px;">새 비밀번호 설정</h3>
+                <p style="font-size: 0.9rem; color: #ccc; margin-bottom: 20px; line-height: 1.4;">이메일 인증이 완료되었습니다.<br>새로운 비밀번호를 입력해주세요.</p>
+                <input type="password" id="new-password" placeholder="새 비밀번호 (6자리 이상)" style="width: 100%; padding: 12px; margin-bottom: 15px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; border-radius: 8px; outline: none;">
+                <button onclick="updateNewPassword()" style="width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">비밀번호 변경 완료</button>
+            </div>
+        </div>
+
+        <h3>☯️ 동전 던지기로 보는 주역점</h3>
+        <p class="info-box">효를 뽑으려면 아래 동전을 터치하여 멈추세요. 6번 반복하세요.</p>
+
+        <div class="notice-box">
+            <b>※ 점을 치기 전 알아두세요</b><br>
+            (1) 주역 점을 칠 때는 음(陰)과 양(陽)이 교차하며 기운이 불안정해지는 자시(子時, 밤 11시 ~ 새벽 1시)에는 점을 치지 않는 것이 좋습니다.<br>
+            (2) 같은 질문에 대해서는 두 번 이상 점을 치지 않는 것이 좋습니다.
+        </div>
+
+        <div id="coin-display">
+            <svg width="180" height="180" viewBox="0 0 100 100">
+                <image href="img/front.png" x="10" y="10" width="80" height="80" opacity="0.6"
+                    preserveAspectRatio="xMidYMid slice" />
+                <text x="50" y="55" font-size="20" text-anchor="middle" font-weight="bold" fill="#fff"
+                    style="text-shadow: 0px 0px 8px #000;">터치</text>
+            </svg>
+        </div>
+
+        <div id="log">정성스러운 마음으로 질문을 떠올리세요...</div>
+        <button id="reset-btn" style="display: none;">🔄 처음으로 (Reset)</button>
+        
+        <div style="margin-top: 40px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); text-align: center;">
+            © 2026. Wonseup_Shin. All rights reserved.
+        </div>
+    </div>
+
+    <script>
+        // Supabase 설정
+        const SUPABASE_URL = 'https://qefeosvfcfusnnsgnzro.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZmVvc3ZmY2Z1c25uc2duenJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMDU1NzEsImV4cCI6MjA5MjU4MTU3MX0.QQhUdE-daaVGkZQ2u05-4-4_9IWJEDazPOiIZs9mYh4';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentUser = null;
+
+        // 세션 상태 변경 감지
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                // 비밀번호 재설정 링크를 타고 온 경우 모달 띄우기
+                document.getElementById('reset-pwd-modal').style.display = 'flex';
+                return; // UI 업데이트 건너뛰기
+            }
+            
+            currentUser = session?.user || null;
+            updateAuthUI();
+        });
+
+        // 초기 세션 확인
+        supabaseClient.auth.getSession().then(({ data: { session } }) => {
+            currentUser = session?.user || null;
+            updateAuthUI();
+        });
+
+        function updateAuthUI() {
+            const userInfo = document.getElementById('user-info');
+            const startScreen = document.getElementById('start-screen');
+            const mainApp = document.getElementById('main-app');
+
+            if (currentUser) {
+                userInfo.textContent = currentUser.email.split('@')[0] + "님 환영합니다";
+                startScreen.style.display = 'none';
+                mainApp.style.display = 'block';
+            } else {
+                startScreen.style.display = 'flex';
+                mainApp.style.display = 'none';
+            }
+        }
+
+        // 기록 모달 제어
+        async function showHistoryModal() { 
+            document.getElementById('history-modal').style.display = 'flex'; 
+            await loadHistory();
+        }
+        function closeHistoryModal() {
+            document.getElementById('history-modal').style.display = 'none';
+        }
+
+        // 로그인/가입 처리
+        async function handleAuth() {
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const btn = document.getElementById('login-submit-btn');
+            
+            // 이메일 형식 검증 정규식
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            if (!email || !emailRegex.test(email)) {
+                alert("올바른 이메일 주소 형식을 입력해주세요. (예: user@example.com)");
+                return;
+            }
+
+            if (password.length < 6) {
+                alert("비밀번호는 6자리 이상이어야 합니다.");
+                return;
+            }
+
+            btn.textContent = "처리 중...";
+            btn.disabled = true;
+
+            // 먼저 로그인을 시도
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            
+            if (error) {
+                // 로그인이 안 되면 회원가입 시도 (유효하지 않은 정보거나 가입되지 않은 경우)
+                if (error.status === 400) {
+                    const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
+                    
+                    if (signUpError) {
+                        if (signUpError.message.includes("User already registered")) {
+                            alert("이미 가입된 이메일입니다. \n로그인 정보가 틀렸거나, 아직 '이메일 인증'을 완료하지 않으셨습니다.\n(이메일함을 확인하시거나 Supabase에서 Confirm Email 설정을 꺼주세요)");
+                        } else {
+                            alert("회원가입 오류: " + signUpError.message);
+                        }
+                    } else {
+                        // 가입은 성공했지만 바로 로그인이 안 된 경우 (이메일 인증이 필요한 상태)
+                        if (signUpData.session === null) {
+                            alert("🎉 회원가입 성공!\n하지만 보안을 위해 이메일 인증이 필요합니다.\n입력하신 이메일함을 확인하여 인증 링크를 클릭해주세요.\n\n(이 과정이 번거롭다면 Supabase에서 'Confirm email' 설정을 끄시면 됩니다.)");
+                        } else {
+                            // 이메일 인증이 필요 없는 경우 (자동 로그인 됨)
+                            alert("회원가입이 완료되어 자동으로 로그인되었습니다.");
+                        }
+                    }
+                } else {
+                    alert("로그인 오류: " + error.message);
+                }
+            } else {
+                // signInWithPassword 성공
+                // updateAuthUI는 onAuthStateChange가 자동으로 처리함
+            }
+            
+            btn.textContent = "시작하기";
+            btn.disabled = false;
+        }
+
+        // 비밀번호 재설정 링크 발송
+        async function sendPasswordReset(e) {
+            e.preventDefault();
+            const emailInput = document.getElementById('auth-email').value.trim();
+            
+            const email = emailInput || prompt("비밀번호를 재설정할 이메일 주소를 입력해주세요:");
+            if (!email) return;
+
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                alert("올바른 이메일 주소 형식을 입력해주세요.");
+                return;
+            }
+
+            const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.href
+            });
+
+            if (error) {
+                alert("메일 발송 오류: " + error.message);
+            } else {
+                alert("입력하신 이메일로 비밀번호 재설정 링크가 발송되었습니다.\n이메일함을 확인하시고, 링크를 클릭하여 새 비밀번호를 설정해주세요.");
+            }
+        }
+
+        // 새 비밀번호로 업데이트
+        async function updateNewPassword() {
+            const newPassword = document.getElementById('new-password').value;
+            if (newPassword.length < 6) {
+                alert("비밀번호는 6자리 이상이어야 합니다.");
+                return;
+            }
+
+            const { data, error } = await supabaseClient.auth.updateUser({
+                password: newPassword
+            });
+
+            if (error) {
+                alert("비밀번호 변경 오류: " + error.message);
+            } else {
+                alert("비밀번호가 성공적으로 변경되었습니다! 다시 로그인해주세요.");
+                document.getElementById('reset-pwd-modal').style.display = 'none';
+                
+                await supabaseClient.auth.signOut();
+                window.location.reload();
+            }
+        }
+
+        async function handleLogout() {
+            await supabaseClient.auth.signOut();
+            alert("로그아웃 되었습니다.");
+        }
+
+        let currentHistoryData = []; // 다운로드를 위한 전역 변수
+
+        // 기록 불러오기
+        async function loadHistory() {
+            const listDiv = document.getElementById('history-list');
+            listDiv.innerHTML = "불러오는 중...";
+            currentHistoryData = [];
+            
+            const { data, error } = await supabaseClient
+                .from('divination_history')
+                .select('*')
+                .order('created_at', { ascending: false });
+                
+            if (error) {
+                listDiv.innerHTML = "기록을 불러오지 못했습니다.";
+                console.error(error);
+                return;
+            }
+            
+            currentHistoryData = data; // 데이터 저장
+
+            if (data.length === 0) {
+                listDiv.innerHTML = "저장된 점괘 기록이 없습니다.";
+                return;
+            }
+            
+            let html = "";
+            data.forEach(item => {
+                const date = new Date(item.created_at).toLocaleString('ko-KR');
+                const jiHex = item.ji_hexagram_name ? ` ➔ ${item.ji_hexagram_name}` : "";
+                
+                html += `<div class="history-item">`;
+                html += `<div class="history-date">${date}</div>`;
+                html += `<div style="font-weight:bold; font-size:1.1rem; color:#ffd700; margin-bottom:5px;">${item.hexagram_name}${jiHex}</div>`;
+                html += `<div style="font-size:0.85rem; color:#ccc; margin-bottom:8px;">[효 결과] ${item.lines_result}</div>`;
+                
+                if (item.hyosa_text) {
+                    html += `<div style="font-size:0.9rem; background:#111; padding:8px; border-radius:4px; margin-bottom:8px; border-left:3px solid #ff6b6b;">${item.hyosa_text.replace(/\n/g, '<br>')}</div>`;
+                }
+                
+                html += `<details style="font-size:0.85rem; cursor:pointer;"><summary style="color:#4dabf7;">상세 해석 보기</summary>`;
+                html += `<div style="padding:10px; background:#0d1a0d; border-radius:4px; margin-top:5px; color:#ddd;">${item.main_hexagram_desc.replace(/\n/g, '<br>')}</div>`;
+                if (item.ji_hexagram_desc) {
+                    html += `<div style="padding:10px; background:#1a1010; border-radius:4px; margin-top:5px; color:#ddd;">[지괘 참고]<br>${item.ji_hexagram_desc.replace(/\n/g, '<br>')}</div>`;
+                }
+                html += `</details></div>`;
+            });
+            listDiv.innerHTML = html;
+        }
+
+        // CSV 다운로드 함수
+        function downloadCSV() {
+            if (!currentHistoryData || currentHistoryData.length === 0) {
+                alert("다운로드할 점괘 기록이 없습니다.");
+                return;
+            }
+
+            // CSV 헤더 (BOM 추가하여 엑셀 한글 깨짐 방지)
+            let csvContent = '\uFEFF'; 
+            csvContent += "일시,본괘,지괘,효 결과,효사,본괘 해석,지괘 해석\n";
+
+            currentHistoryData.forEach(item => {
+                const date = new Date(item.created_at).toLocaleString('ko-KR');
+                const hexName = item.hexagram_name || "";
+                const jiName = item.ji_hexagram_name || "";
+                const lines = item.lines_result || "";
+                const hyosa = item.hyosa_text || "";
+                const mainDesc = item.main_hexagram_desc || "";
+                const jiDesc = item.ji_hexagram_desc || "";
+
+                // CSV 이스케이프 함수 (콤마, 줄바꿈, 따옴표 처리)
+                const escapeCsv = (str) => {
+                    if (str === null || str === undefined) return '""';
+                    const escaped = str.toString().replace(/"/g, '""');
+                    return `"${escaped}"`;
+                };
+
+                const row = [
+                    escapeCsv(date),
+                    escapeCsv(hexName),
+                    escapeCsv(jiName),
+                    escapeCsv(lines),
+                    escapeCsv(hyosa),
+                    escapeCsv(mainDesc),
+                    escapeCsv(jiDesc)
+                ];
+
+                csvContent += row.join(",") + "\n";
+            });
+
+            // Blob 다운로드 트리거
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "주역점_기록.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        let results = [];
+        let isSpinning = false;
+        let spinInterval;
+
+        const display = document.getElementById('coin-display');
+        const logArea = document.getElementById('log');
+
+        // --- 3개 동전 일러스트 생성 함수 (실제 이미지 사용) ---
+        function getThreeCoinsSvg(c1, c2, c3) {
+            const getCoin = (val, x, y) => {
+                const src = val === 3 ? "img/front.png" : "img/back.png";
+                return `<image href="${src}" x="${x}" y="${y}" width="45" height="45" preserveAspectRatio="xMidYMid slice" />`;
+            };
+            return `
+            <svg width="180" height="180" viewBox="0 0 100 100">
+                ${getCoin(c3, 27.5, 5)}
+                ${getCoin(c1, 2.5, 50)}
+                ${getCoin(c2, 52.5, 50)}
+            </svg>`;
+        }
+
+        // --- 프로그램 로직 ---
+        function vibrate(ms) {
+            if (navigator.vibrate) navigator.vibrate(ms);
+        }
+
+        function startSpin() {
+            isSpinning = true;
+            spinInterval = setInterval(() => {
+                // 회전 중에는 3개의 동전을 무작위로 교체
+                const r1 = Math.random() > 0.5 ? 3 : 2;
+                const r2 = Math.random() > 0.5 ? 3 : 2;
+                const r3 = Math.random() > 0.5 ? 3 : 2;
+                display.innerHTML = getThreeCoinsSvg(r1, r2, r3);
+            }, 60);
+        }
+
+        function handleInput(e) {
+            if (e) e.preventDefault();
+
+            // 자시(23:00 ~ 01:00) 체크 로직
+            const currentHour = new Date().getHours();
+            if (currentHour === 23 || currentHour === 0) {
+                alert("자시(子時)에는 음과 양의 기운이 교차하므로 점을 칠 수 없습니다.");
+                return;
+            }
+
+            if (results.length >= 6) return; // 6효 완성 시 중단
+
+            if (!isSpinning) {
+                startSpin();
+                return;
+            }
+
+            // 터치 시 효 기록 (동전은 멈추지 않고 계속 회전)
+            vibrate(50); // 짧은 진동
+
+            // 3개 동전 결과 한 번에 결정
+            const c1 = Math.random() > 0.5 ? 3 : 2;
+            const c2 = Math.random() > 0.5 ? 3 : 2;
+            const c3 = Math.random() > 0.5 ? 3 : 2;
+
+            display.innerHTML = getThreeCoinsSvg(c1, c2, c3);
+
+            const total = c1 + c2 + c3;
+            const isChanged = (total === 6 || total === 9);
+            const isYang = (total === 7 || total === 9);
+
+            results.push({ total, isChanged, isYang });
+
+            const typeText = isYang ? '<span class="yang">— (양)</span>' : '<span class="um">-- -- (음)</span>';
+            if (results.length === 1) logArea.innerHTML = ""; // 초기 메시지 삭제
+            const newLine = `[${results.length}효] ${typeText} ${isChanged ? '<b>*변효</b>' : ''}<br>`;
+            logArea.innerHTML = newLine + logArea.innerHTML; // 새 효를 위쪽에 추가 (1효가 맨 아래로)
+
+            // 6효 완성 시 길게 진동, 회전 멈춤 및 해석
+            if (results.length === 6) {
+                clearInterval(spinInterval);
+                isSpinning = false;
+                vibrate([100, 50, 100]);
+                analyzeResults();
+            }
+        }
+
+        // 해석 로직 및 데이터 매핑
+        function analyzeResults() {
+            // 본괘 데이터 찾기
+            const lines = results.map(r => r.isYang ? "양" : "음");
+            const hex = hexagramData.find(h =>
+                h["1효"] === lines[0] &&
+                h["2효"] === lines[1] &&
+                h["3효"] === lines[2] &&
+                h["4효"] === lines[3] &&
+                h["5효"] === lines[4] &&
+                h["6효"] === lines[5]
+            );
+
+            // 지괘 데이터 찾기 (변효가 있는 경우)
+            const changedIndices = results.map((r, i) => r.isChanged ? i + 1 : null).filter(v => v !== null);
+            const numChanges = changedIndices.length;
+
+            let jiHex = null;
+            if (numChanges > 0) {
+                const jiLines = results.map(r => {
+                    if (r.isChanged) return r.isYang ? "음" : "양"; // 반대로 뒤집음
+                    return r.isYang ? "양" : "음";
+                });
+                jiHex = hexagramData.find(h =>
+                    h["1효"] === jiLines[0] &&
+                    h["2효"] === jiLines[1] &&
+                    h["3효"] === jiLines[2] &&
+                    h["4효"] === jiLines[3] &&
+                    h["5효"] === jiLines[4] &&
+                    h["6효"] === jiLines[5]
+                );
+            }
+
+            if (hex) {
+                if (numChanges > 0 && jiHex) {
+                    // 본괘와 지괘를 함께 표시
+                    display.innerHTML = `
+                    <svg width="180" height="180" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="48" fill="#1a1a1a" stroke="#b8860b" stroke-width="2"/>
+                        <text x="28" y="65" font-size="35" text-anchor="middle" fill="#ffd700">${hex["괘"]}</text>
+                        <text x="50" y="60" font-size="20" text-anchor="middle" fill="#aaa">➔</text>
+                        <text x="72" y="65" font-size="35" text-anchor="middle" fill="#ff6b6b">${jiHex["괘"]}</text>
+                        <text x="28" y="85" font-size="10" text-anchor="middle" fill="#ffd700">본괘</text>
+                        <text x="72" y="85" font-size="10" text-anchor="middle" fill="#ff6b6b">지괘</text>
+                    </svg>`;
+                } else {
+                    // 본괘만 표시
+                    display.innerHTML = `
+                    <svg width="180" height="180" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="48" fill="#1a1a1a" stroke="#b8860b" stroke-width="2"/>
+                        <text x="50" y="65" font-size="50" text-anchor="middle" fill="#ffd700">${hex["괘"]}</text>
+                        <text x="50" y="85" font-size="12" text-anchor="middle" fill="#ffd700">본괘</text>
+                    </svg>`;
+                }
+            }
+
+            let msg = "<br><b>▶ 점치는 법 (변효 기준):</b><br>";
+
+            if (numChanges === 0) msg += "변효가 없으므로 본괘의 괘사로 점을 칩니다.";
+            else if (numChanges === 1) msg += `본괘의 ${changedIndices[0]}효사로 점을 칩니다.`;
+            else if (numChanges === 2) msg += `본괘 ${changedIndices[0]}효(주효)와 ${changedIndices[1]}효(참고)로 점칩니다.`;
+            else if (numChanges === 3) msg += "본괘와 지괘의 괘사를 비교합니다.";
+            else if (numChanges === 4) {
+                const unchanged = results.map((r, i) => !r.isChanged ? i + 1 : null).filter(v => v !== null);
+                msg += `지괘의 변하지 않은 ${unchanged[0]}효(주효)와 ${unchanged[1]}효(참고)로 점칩니다.`;
+            }
+            else if (numChanges === 5) {
+                const unchanged = results.map((r, i) => !r.isChanged ? i + 1 : null).filter(v => v !== null);
+                msg += `지괘의 변하지 않은 ${unchanged[0]}효사로 점칩니다.`;
+            }
+            else if (numChanges === 6) msg += "지괘의 괘사로 점을 칩니다.";
+
+            if (numChanges > 0) {
+                msg += "<br><br><b>▶ 괘의 변화 이유 및 해당 효사(爻辭):</b><br>";
+                msg += `<div style='margin-top:10px; padding:15px; border:1px solid #4CAF50; border-radius:8px; background:#0d1a0d;'>`;
+                results.forEach((r, idx) => {
+                    if (r.isChanged) {
+                        const oldName = r.isYang ? "노양(합 9)" : "노음(합 6)";
+                        const newName = r.isYang ? "음" : "양";
+                        msg += `<div style='margin-bottom: 10px;'>`;
+                        msg += `- <b>${idx + 1}효</b>가 극에 달한 <b>${oldName}</b>이므로 <b>${newName}</b>으로 변했습니다.<br>`;
+                        if (typeof hyosaData !== 'undefined' && hex && hyosaData[hex["순서"]]) {
+                            msg += `<span style='color:#aed581; display:inline-block; margin-top:5px;'>💡 <b>효사 풀이:</b> ${hyosaData[hex["순서"]][idx]}</span><br>`;
+                        }
+                        msg += `</div>`;
+                    }
+                });
+                msg += `</div>`;
+            }
+
+            if (hex) {
+                // 본괘 박스
+                msg += `<div style='margin-top:20px; padding:15px; border:1px solid #b8860b; border-radius:8px; background:#111;'>`;
+                msg += `<h4 style='color:#ffd700; margin:0 0 10px 0; font-size:1.2rem;'>[본괘] ${hex["괘"]} ${hex["괘명"]}</h4>`;
+                msg += `<b>괘상:</b> ${hex["괘상_1"]}${hex["괘상_2"] ? ' / ' + hex["괘상_2"] : ''}<br><br>`;
+                msg += `<b>해석:</b> ${hex["해석"]}<br><br>`;
+                msg += `<span style='font-size:0.85rem; color:#888;'><b>비고:</b> ${hex["비고"]}</span>`;
+                msg += `</div>`;
+            }
+
+            if (jiHex) {
+                // 지괘 박스
+                msg += `<div style='margin-top:20px; padding:15px; border:1px solid #ff6b6b; border-radius:8px; background:#1a1010;'>`;
+                msg += `<h4 style='color:#ff6b6b; margin:0 0 10px 0; font-size:1.2rem;'>[지괘] ${jiHex["괘"]} ${jiHex["괘명"]}</h4>`;
+                msg += `<b>괘상:</b> ${jiHex["괘상_1"]}${jiHex["괘상_2"] ? ' / ' + jiHex["괘상_2"] : ''}<br><br>`;
+                msg += `<b>해석:</b> ${jiHex["해석"]}<br><br>`;
+                msg += `<span style='font-size:0.85rem; color:#888;'><b>비고:</b> ${jiHex["비고"]}</span>`;
+                msg += `</div>`;
+            }
+
+            logArea.innerHTML = logArea.innerHTML + msg; // 아래에 추가
+            document.getElementById('reset-btn').style.display = 'inline-block';
+
+            // Supabase에 데이터 저장 로직 추가
+            if (currentUser && hex) {
+                saveToSupabase(hex, jiHex, results);
+            }
+        }
+
+        async function saveToSupabase(hex, jiHex, resultsArray) {
+            // 효 결과 텍스트화
+            const linesStr = resultsArray.map((r, i) => {
+                let name = r.isYang ? "양" : "음";
+                if (r.isChanged) name = "변" + name;
+                return `${i+1}효(${name})`;
+            }).join(", ");
+
+            // 효사 텍스트화
+            let hyosaText = "";
+            resultsArray.forEach((r, idx) => {
+                if (r.isChanged && typeof hyosaData !== 'undefined' && hex && hyosaData[hex["순서"]]) {
+                    hyosaText += `[${idx + 1}효] ${hyosaData[hex["순서"]][idx]}\n`;
+                }
+            });
+
+            // 해석 텍스트화
+            let mainDesc = hex ? `[${hex["괘상_1"]}${hex["괘상_2"] ? '/' + hex["괘상_2"] : ''}] ${hex["해석"]}` : "";
+            let jiDesc = jiHex ? `[${jiHex["괘상_1"]}${jiHex["괘상_2"] ? '/' + jiHex["괘상_2"] : ''}] ${jiHex["해석"]}` : null;
+
+            try {
+                const { error } = await supabaseClient
+                    .from('divination_history')
+                    .insert([
+                        {
+                            user_id: currentUser.id,
+                            hexagram_name: hex["괘"] + " " + hex["괘명"],
+                            ji_hexagram_name: jiHex ? jiHex["괘"] + " " + jiHex["괘명"] : null,
+                            lines_result: linesStr,
+                            hyosa_text: hyosaText.trim() === "" ? null : hyosaText.trim(),
+                            main_hexagram_desc: mainDesc,
+                            ji_hexagram_desc: jiDesc,
+                            full_result_html: logArea.innerHTML // HTML 전체 저장 (예비용)
+                        }
+                    ]);
+                if (error) console.error("점괘 저장 오류:", error);
+            } catch (e) {
+                console.error("Supabase 에러:", e);
+            }
+        }
+
+        // 이벤트 리스너 등록
+        display.addEventListener('pointerdown', handleInput);
+
+        // 리셋 버튼 로직
+        const resetBtn = document.getElementById('reset-btn');
+        resetBtn.addEventListener('click', () => {
+            results = [];
+            isSpinning = false;
+            clearInterval(spinInterval);
+
+            // 초기 화면 복구
+            display.innerHTML = `
+                <svg width="180" height="180" viewBox="0 0 100 100">
+                    <image href="img/front.png" x="10" y="10" width="80" height="80" opacity="0.6"
+                        preserveAspectRatio="xMidYMid slice" />
+                    <text x="50" y="55" font-size="20" text-anchor="middle" font-weight="bold" fill="#fff"
+                        style="text-shadow: 0px 0px 8px #000;">터치</text>
+                </svg>
+            `;
+            logArea.innerHTML = "정성스러운 마음으로 질문을 떠올리세요...";
+            resetBtn.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' }); // 상단으로 스크롤 이동
+        });
+    </script>
+    <!-- Service Worker 등록 (PWA/TWA 품질 기준 충족) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW error:', err));
+            });
+        }
+    </script>
+</body>
+
+</html>
